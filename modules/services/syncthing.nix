@@ -4,6 +4,8 @@ with lib;
 
 let
 
+  inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
+
   cfg = config.services.syncthing;
 
 in {
@@ -56,9 +58,9 @@ in {
   };
 
   config = mkMerge [
-    (mkIf cfg.enable {
-      home.packages = [ (getOutput "man" pkgs.syncthing) ];
+    (mkIf cfg.enable { home.packages = [ (getOutput "man" pkgs.syncthing) ]; })
 
+    (mkIf (cfg.enable && isLinux) {
       systemd.user.services = {
         syncthing = {
           Unit = {
@@ -92,7 +94,44 @@ in {
       };
     })
 
+    (mkIf (cfg.enable && isDarwin) {
+      launchd.agents.syncthing = let
+        logDir = if config.xdg.enable then
+          config.xdg.cacheHome
+        else
+          "${config.home.homeDirectory}/Library/Logs";
+      in {
+        enable = true;
+        config = {
+          ProgramArguments = [
+            "${pkgs.syncthing}/bin/syncthing"
+            "--no-browser"
+            "--no-restart"
+            "--logflags=0"
+          ] ++ (optionals (cfg.extraOptions != [ ])
+            (escapeShellArgs cfg.extraOptions));
+          RunAtLoad = true;
+          EnvironmentVariables = {
+            HOME = config.home.homeDirectory;
+            STNORESTART = "1";
+          };
+          KeepAlive.SuccessfulExit = false;
+          LowPriorityIO = true;
+          ProcessType = "Background";
+          StandardOutPath = "${logDir}/syncthing.out.log";
+          StandardErrorPath = "${logDir}/syncthing.err.log";
+        };
+      };
+    })
+
     (mkIf (isAttrs cfg.tray && cfg.tray.enable) {
+      assertions = [{
+        # TODO: test
+        assertion = isLinux;
+        message = ''
+          The 'services.syncthing.tray' option is not available on darwin.
+        '';
+      }];
       systemd.user.services = {
         ${cfg.tray.package.pname} = {
           Unit = {
@@ -129,9 +168,17 @@ in {
           Install = { WantedBy = [ "graphical-session.target" ]; };
         };
       };
+      assertions = [{
+        # TODO: test
+        assertion = isLinux;
+        message = ''
+          The 'services.syncthing.tray' option is not available on darwin.
+        '';
+      }];
       warnings = [
         "Specifying 'services.syncthing.tray' as a boolean is deprecated, set 'services.syncthing.tray.enable' instead. See https://github.com/nix-community/home-manager/pull/1257."
       ];
     })
+
   ];
 }
