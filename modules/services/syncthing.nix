@@ -4,16 +4,9 @@ with lib;
 
 let
 
+  inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
+
   cfg = config.services.syncthing;
-
-  defaultSyncthingArgs = [
-    "${pkgs.syncthing}/bin/syncthing"
-    "-no-browser"
-    "-no-restart"
-    "-logflags=0"
-  ];
-
-  syncthingArgs = defaultSyncthingArgs ++ cfg.extraOptions;
 
 in {
   meta.maintainers = [ maintainers.rycee ];
@@ -27,7 +20,7 @@ in {
         default = [ ];
         example = [ "--gui-apikey=apiKey" ];
         description = ''
-          Extra command-line arguments to pass to {command}`syncthing`.
+          Extra command-line arguments to pass to <command>syncthing</command>.
         '';
       };
 
@@ -65,9 +58,9 @@ in {
   };
 
   config = mkMerge [
-    (mkIf cfg.enable {
-      home.packages = [ (getOutput "man" pkgs.syncthing) ];
+    (mkIf cfg.enable { home.packages = [ (getOutput "man" pkgs.syncthing) ]; })
 
+    (mkIf (cfg.enable && isLinux) {
       systemd.user.services = {
         syncthing = {
           Unit = {
@@ -78,7 +71,10 @@ in {
           };
 
           Service = {
-            ExecStart = escapeShellArgs syncthingArgs;
+            ExecStart =
+              "${pkgs.syncthing}/bin/syncthing -no-browser -no-restart -logflags=0"
+              + optionalString (cfg.extraOptions != [ ])
+              (" " + escapeShellArgs cfg.extraOptions);
             Restart = "on-failure";
             SuccessExitStatus = [ 3 4 ];
             RestartForceExitStatus = [ 3 4 ];
@@ -96,26 +92,46 @@ in {
           Install = { WantedBy = [ "default.target" ]; };
         };
       };
+    })
 
-      launchd.agents.syncthing = {
+    (mkIf (cfg.enable && isDarwin) {
+      launchd.agents.syncthing = let
+        logDir = if config.xdg.enable then
+          config.xdg.cacheHome
+        else
+          "${config.home.homeDirectory}/Library/Logs";
+      in {
         enable = true;
         config = {
-          ProgramArguments = syncthingArgs;
-          KeepAlive = {
-            Crashed = true;
-            SuccessfulExit = false;
+          ProgramArguments = [
+            "${pkgs.syncthing}/bin/syncthing"
+            "--no-browser"
+            "--no-restart"
+            "--logflags=0"
+          ] ++ (optionals (cfg.extraOptions != [ ])
+            (escapeShellArgs cfg.extraOptions));
+          RunAtLoad = true;
+          EnvironmentVariables = {
+            HOME = config.home.homeDirectory;
+            STNORESTART = "1";
           };
+          KeepAlive.SuccessfulExit = false;
+          LowPriorityIO = true;
           ProcessType = "Background";
+          StandardOutPath = "${logDir}/syncthing.out.log";
+          StandardErrorPath = "${logDir}/syncthing.err.log";
         };
       };
     })
 
     (mkIf (isAttrs cfg.tray && cfg.tray.enable) {
-      assertions = [
-        (hm.assertions.assertPlatform "services.syncthing.tray" pkgs
-          platforms.linux)
-      ];
-
+      assertions = [{
+        # TODO: test
+        assertion = isLinux;
+        message = ''
+          The 'services.syncthing.tray' option is not available on darwin.
+        '';
+      }];
       systemd.user.services = {
         ${cfg.tray.package.pname} = {
           Unit = {
@@ -136,11 +152,6 @@ in {
 
     # deprecated
     (mkIf (isBool cfg.tray && cfg.tray) {
-      assertions = [
-        (hm.assertions.assertPlatform "services.syncthing.tray" pkgs
-          platforms.linux)
-      ];
-
       systemd.user.services = {
         "syncthingtray" = {
           Unit = {
@@ -157,9 +168,17 @@ in {
           Install = { WantedBy = [ "graphical-session.target" ]; };
         };
       };
+      assertions = [{
+        # TODO: test
+        assertion = isLinux;
+        message = ''
+          The 'services.syncthing.tray' option is not available on darwin.
+        '';
+      }];
       warnings = [
         "Specifying 'services.syncthing.tray' as a boolean is deprecated, set 'services.syncthing.tray.enable' instead. See https://github.com/nix-community/home-manager/pull/1257."
       ];
     })
+
   ];
 }
