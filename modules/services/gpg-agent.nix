@@ -19,14 +19,16 @@ let
   # we cannot use `gpgconf` directly because it heavily depends on system
   # state, but we need the values at build time. original:
   # https://github.com/gpg/gnupg/blob/c6702d77d936b3e9d91b34d8fdee9599ab94ee1b/common/homedir.c#L672-L681
-  gpgconf = dir:
+  sockRelPath = dir:
     let
       hash =
         substring 0 24 (hexStringToBase32 (builtins.hashString "sha1" homedir));
     in if homedir == options.programs.gpg.homedir.default then
-      "%t/gnupg/${dir}"
+      "gnupg/${dir}"
     else
-      "%t/gnupg/d.${hash}/${dir}";
+      "gnupg/d.${hash}/${dir}";
+  gpgconf = dir: "%t/${sockRelPath dir}";
+  gpgconf' = dir: "/tmp/${sockRelPath dir}";
 
   # Act like `xxd -r -p | base32` but with z-base-32 alphabet and no trailing padding.
   # Written in Nix for purity.
@@ -274,7 +276,7 @@ in {
               ExecStart = "${gpgPkg}/bin/gpg-agent --supervised"
                 + optionalString cfg.verbose " --verbose";
               ExecReload = "${gpgPkg}/bin/gpgconf --reload gpg-agent";
-              Environment = [ "GNUPGHOME=${homedir}" ];
+              Environment = "GNUPGHOME=${homedir}";
             };
           };
 
@@ -349,13 +351,11 @@ in {
             RunAtLoad = cfg.enableSshSupport;
             EnvironmentVariables = { GNUPGHOME = homedir; };
             KeepAlive.SuccessfulExit = false;
-            Sockets = [
-              {
-                SockPathName = gpgconf "S.gpg-agent";
-                SockPathMode = "0600";
-                SockServiceName = "gpg-agent";
-              }
-            ];
+            Sockets.gpg-agent = {
+              SockPathName = gpgconf' "S.gpg-agent";
+              SockPathMode = 0600;
+              SockServiceName = "gpg-agent";
+            };
           };
         };
       }
@@ -366,13 +366,11 @@ in {
             RunAtLoad = true;
             EnvironmentVariables = { GNUPGHOME = homedir; };
             KeepAlive.SuccessfulExit = false;
-            Sockets = [
-              {
-                SockPathName = gpgconf "S.gpg-agent.ssh";
-                SockPathMode = "0600";
-                SockServiceName = "gpg-agent-ssh";
-              }
-            ];
+            Sockets.gpg-agent-ssh = {
+              SockPathName = gpgconf' "S.gpg-agent.ssh";
+              SockPathMode = 0600;
+              SockServiceName = "gpg-agent-ssh";
+            };
           };
         };
       })
