@@ -9,6 +9,12 @@ let
 
   homedir = config.programs.gpg.homedir;
 
+  pinentryBinPath = optionalString cfg.pinentryFlavor != null
+    (if cfg.pinentryFlavor == "mac" then
+      "${pkgs.pinentry_mac}/Applications/pinentry-mac.app/Contents/MacOS/pinentry-mac"
+    else
+      "${pkgs.pinentry.${cfg.pinentryFlavor}}/bin/pinentry");
+
   gpgInitStr = ''
     GPG_TTY="$(tty)"
     export GPG_TTY
@@ -179,7 +185,7 @@ in {
       };
 
       pinentryFlavor = mkOption {
-        type = types.nullOr (types.enum pkgs.pinentry.flavors);
+        type = types.nullOr (types.enum (pkgs.pinentry.flavors ++ [ "mac" ]));
         example = "gnome3";
         default = "gtk2";
         description = ''
@@ -227,8 +233,7 @@ in {
           ++ optional (cfg.maxCacheTtlSsh != null)
           "max-cache-ttl-ssh ${toString cfg.maxCacheTtlSsh}"
           ++ optional (cfg.pinentryFlavor != null)
-          "pinentry-program ${pkgs.pinentry.${cfg.pinentryFlavor}}/bin/pinentry"
-          ++ [ cfg.extraConfig ]);
+          "pinentry-program ${pinentryBinPath}" ++ [ cfg.extraConfig ]);
 
       home.sessionVariablesExtra = optionalString cfg.enableSshSupport ''
         if [[ -z "$SSH_AUTH_SOCK" ]]; then
