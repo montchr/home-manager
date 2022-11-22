@@ -336,40 +336,16 @@ in {
       })
     ]))
 
-    (mkIf pkgs.stdenv.hostPlatform.isDarwin (mkMerge [
-      {
-        launchd.agents.gpg-agent = {
-          enable = true;
-          config = {
-            Program = "${gpgPkg}/bin/gpg-agent";
-            ProgramArguments =
-              [ "--supervised" (mkIf cfg.verbose "--verbose") ];
-            RunAtLoad = true;
-            EnvironmentVariables = { GNUPGHOME = homedir; };
-            KeepAlive.SuccessfulExit = false;
-            Sockets.gpg-agent = {
-              SockPathName = gpgconf' "S.gpg-agent";
-              SockPathMode = 600;
-              SockServiceName = "gpg-agent";
-            };
-          };
+    (mkIf pkgs.stdenv.hostPlatform.isDarwin {
+      launchd.agents.gpg-agent = {
+        enable = true;
+        config = {
+          ProgramArguments = ["${gpgPkg}/bin/gpg-connect-agent" "/bye" ];
+          RunAtLoad = cfg.enableSshSupport;
+          EnvironmentVariables = { GNUPGHOME = homedir; };
+          KeepAlive.SuccessfulExit = false;
         };
-      }
-      (mkIf cfg.enableSshSupport {
-        launchd.agents.gpg-agent-ssh = {
-          enable = true;
-          config = {
-            RunAtLoad = true;
-            EnvironmentVariables = { GNUPGHOME = homedir; };
-            KeepAlive.SuccessfulExit = false;
-            Sockets.gpg-agent-ssh = {
-              SockPathName = gpgconf' "S.gpg-agent.ssh";
-              SockPathMode = 600;
-              SockServiceName = "gpg-agent-ssh";
-            };
-          };
-        };
-      })
-    ]))
+      };
+    })
   ]);
 }
