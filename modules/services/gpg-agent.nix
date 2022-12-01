@@ -9,7 +9,7 @@ let
 
   homedir = config.programs.gpg.homedir;
 
-  pinentryBinPath = optionalString cfg.pinentryFlavor != null
+  pinentryBinPath = optionalString (cfg.pinentryFlavor != null)
     (if cfg.pinentryFlavor == "mac" then
       "${pkgs.pinentry_mac}/Applications/pinentry-mac.app/Contents/MacOS/pinentry-mac"
     else
