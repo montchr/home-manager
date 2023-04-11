@@ -3,12 +3,10 @@
 with lib;
 
 let
-  inherit (pkgs.stdenv.hostPlatform) isDarwin;
+  inherit (pkgs.stdenv.hostPlatform) isLinux;
 
-  socketPath = if isDarwin then
-    config.launchd.agents.gnupg-agent.config.Sockets.ssh.SockPathName
-  else
-    config.systemd.user.sockets.gpg-agent.Socket.ListenStream;
+  socketPath =
+    mkIf isLinux config.systemd.user.sockets.gpg-agent.Socket.ListenStream;
 
 in {
   config = {
@@ -21,8 +19,9 @@ in {
 
     test.stubs.gnupg = { };
 
-    nmt.script = ''
+    nmt.script = optionalString isLinux ''
       in="${socketPath}"
+    '' + ''
       if [[ $in != "%t/gnupg/d.wp4h7ks5zxy4dodqadgpbbpz/S.gpg-agent" ]]
       then
         echo $in
